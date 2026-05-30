@@ -13,8 +13,12 @@ interface BoardEditorProps {
 
 const DARK = '#769656'
 const LIGHT = '#eeeed2'
-const WHITE_PIECES = ['wK', 'wQ', 'wR', 'wB', 'wN', 'wP']
-const BLACK_PIECES = ['bK', 'bQ', 'bR', 'bB', 'bN', 'bP']
+// Both kings are always on the board (you can drag them around but not add or
+// remove them), so they are NOT offered in the trays.
+const WHITE_PIECES = ['wQ', 'wR', 'wB', 'wN', 'wP']
+const BLACK_PIECES = ['bQ', 'bR', 'bB', 'bN', 'bP']
+
+const isKing = (piece?: string) => piece === 'wK' || piece === 'bK'
 
 // A couple of handy presets to start from.
 const STANDARD: PositionObject = {
@@ -23,6 +27,7 @@ const STANDARD: PositionObject = {
   a2: 'wP', b2: 'wP', c2: 'wP', d2: 'wP', e2: 'wP', f2: 'wP', g2: 'wP', h2: 'wP',
   a1: 'wR', b1: 'wN', c1: 'wB', d1: 'wQ', e1: 'wK', f1: 'wB', g1: 'wN', h1: 'wR',
 }
+// The two kings are the permanent baseline the editor always keeps.
 const KINGS_ONLY: PositionObject = { e1: 'wK', e8: 'bK' }
 
 export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
@@ -54,9 +59,11 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
     return true
   }
 
-  // Move an existing piece to a new square (replacing whatever is there).
+  // Move an existing piece to a new square. Kings may be repositioned but never
+  // captured: dropping any piece onto a king is rejected.
   function onPieceDrop(sourceSquare: string, targetSquare: string, piece: string): boolean {
     if (sourceSquare === targetSquare) return false
+    if (isKing(position[targetSquare]) && !isKing(piece)) return false
     setPosition((prev) => {
       const next = { ...prev }
       delete next[sourceSquare]
@@ -67,8 +74,9 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
     return true
   }
 
-  // Drag a piece off the board to remove it.
+  // Drag a piece off the board to remove it — except the kings, which stay.
   function onPieceDropOffBoard(sourceSquare: string) {
+    if (isKing(position[sourceSquare])) return
     setPosition((prev) => {
       const next = { ...prev }
       delete next[sourceSquare]
@@ -77,10 +85,10 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
     setError(null)
   }
 
-  // Click a piece on the board to delete it (handy on touch / no-drag-off).
+  // Click a piece on the board to delete it (handy on touch). Kings can't be deleted.
   function onSquareClick(square: string) {
     setPosition((prev) => {
-      if (!prev[square]) return prev
+      if (!prev[square] || isKing(prev[square])) return prev
       const next = { ...prev }
       delete next[square]
       return next
@@ -109,8 +117,9 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
     <ChessboardDnDProvider>
       <div className="editor" ref={containerRef}>
         <p className="editor-help">
-          Drag pieces from the side trays onto the board. Drag a piece off the board (or click it)
-          to remove it. Then choose who moves first and press <strong>Start game</strong>.
+          Both kings are always on the board (drag them to reposition). Drag the other pieces from
+          the side trays onto the board; drag a piece off (or click it) to remove it. Then choose
+          who moves first and press <strong>Start game</strong>.
         </p>
 
         <div className="editor-row">
@@ -154,9 +163,8 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
           </div>
 
           <div className="row gap wrap">
-            <button className="btn" onClick={() => { setPosition({ ...KINGS_ONLY }); setError(null) }}>Kings only</button>
             <button className="btn" onClick={() => { setPosition({ ...STANDARD }); setError(null) }}>Start position</button>
-            <button className="btn" onClick={() => { setPosition({}); setError(null) }}>Clear board</button>
+            <button className="btn" onClick={() => { setPosition({ ...KINGS_ONLY }); setError(null) }}>Clear board</button>
           </div>
 
           <div className="row gap">
