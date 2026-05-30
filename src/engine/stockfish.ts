@@ -1,18 +1,18 @@
 // Thin wrapper around the single-threaded Stockfish NNUE WASM build.
 // Runs entirely in the browser (no server, no per-move network calls).
 //
-// STRENGTH MODEL — controlled MultiPV selection (not UCI_Elo).
-// Stockfish's own UCI_Elo limiter hits a target rating by injecting random
-// blunders, so at a fixed "rating" it plays inconsistently and occasionally
-// hangs material. That is terrible for endgame training. Instead we:
-//   1. Search the position properly with MultiPV (top-N candidate moves + evals).
-//   2. Pick among the candidates with a rating-dependent policy: strong ratings
-//      almost always play near-best; weaker ratings spread out more — but a hard
-//      "blunder cap" that scales with rating means it never gifts a queen. The
-//      result is a consistent, calibratable opponent that makes human-scale
-//      imperfections rather than catastrophic ones.
-// Thinking time (the slider) now only controls how long it ponders, independent
-// of strength.
+// STRENGTH MODEL — Skill Level + search depth (calibrated to Lichess's levels).
+// Earlier attempts used UCI_Elo (injects random blunders -> inconsistent) and a
+// home-grown MultiPV softmax (in endgames "low centipawn-loss" is a poor proxy
+// for good technique, so it picked aimless non-progress moves). Both felt weak.
+//
+// Lichess's own AI levels are a well-known, validated reference:
+//   L5 Skill 7  depth 5  (~1500)   L6 Skill 11 depth 8  (~1900)
+//   L7 Skill 15 depth 13 (~2300)   L8 full strength, depth 22 (~2800)
+// We map the 800–2000 slider onto Skill Level (0–20) + a search depth, with the
+// TOP of the slider = full Skill 20 at a deep search so it genuinely plays the
+// best move. The thinking-time slider becomes a movetime *cap* (whichever of
+// depth / time is reached first), so strong levels stay responsive.
 
 export interface StrengthSettings {
   /** Target opponent strength, ~800–2000. */
@@ -27,28 +27,20 @@ export interface Score {
   mate?: number
 }
 
-interface Candidate {
-  move: string
-  /** Score from side-to-move perspective, mate mapped to a large cp-equivalent. */
-  scoreNum: number
-}
-
 type BestMoveCallback = (uci: string) => void
 
 const ENGINE_URL = `${import.meta.env.BASE_URL}engine/stockfish-nnue-16-single.js`
-const MULTIPV = 5
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
-/** Map a UCI score to a single comparable number (centipawns), side-to-move POV. */
-function scoreToNum(type: 'cp' | 'mate', val: number): number {
-  if (type === 'mate') {
-    // Closer mates rank higher; being mated ranks very low. Delaying mate (more
-    // plies) is preferred when already lost.
-    return val > 0 ? 100000 - val * 100 : -100000 - val * 100
-  }
-  return val
+/** Skill Level (0–20) and search depth for a target rating on the 800–2000 slider. */
+export function ratingToSkillDepth(rating: number): { skill: number; depth: number } {
+  const t = clamp((rating - 800) / (2000 - 800), 0, 1)
+  // 800 -> Skill 1 / depth 5 ; 2000 -> Skill 20 / depth 16 (full strength, best moves).
+  const skill = Math.round(lerp(1, 20, t))
+  const depth = Math.round(lerp(5, 16, t))
+  return { skill: clamp(skill, 0, 20), depth: clamp(depth, 1, 30) }
 }
 
 export class Engine {
@@ -60,16 +52,11 @@ export class Engine {
   private lastScore: Score | null = null
   private evalQueue: Promise<Score | null> = Promise.resolve(null)
   private strength: StrengthSettings = { rating: 1200, moveTimeMs: 3000 }
-
-  /** When non-null, a play search is in progress and we are collecting candidates. */
-  private candidates: Map<number, Candidate> | null = null
-  /** Whether this instance uses MultiPV (the playing engine) or not (analysis). */
-  private useMultiPV = false
+  private playDepth = 10
 
   /** Load the wasm engine and complete the UCI handshake. */
-  async init(opts: { multiPV?: boolean } = {}): Promise<void> {
+  async init(): Promise<void> {
     if (this.worker) return
-    this.useMultiPV = !!opts.multiPV
     this.worker = new Worker(ENGINE_URL)
     this.worker.onmessage = (e: MessageEvent) => this.handleLine(String(e.data))
     this.send('uci')
@@ -77,7 +64,6 @@ export class Engine {
     this.send('setoption name Threads value 1')
     this.send('setoption name Hash value 64')
     this.send('setoption name UCI_AnalyseMode value false')
-    if (this.useMultiPV) this.send(`setoption name MultiPV value ${MULTIPV}`)
     await this.isReady()
     this.ready = true
     this.readyWaiters.forEach((r) => r())
@@ -106,23 +92,10 @@ export class Engine {
       }
     }
 
+    // Track the best line's score (for evaluate()).
     if (line.startsWith('info') && line.includes(' score ')) {
-      const mpvMatch = line.match(/multipv (\d+)/)
-      const mpv = mpvMatch ? Number(mpvMatch[1]) : 1
       const sc = line.match(/score (cp|mate) (-?\d+)/)
-      const pv = line.match(/ pv ([a-h][1-8][a-h][1-8][qrbn]?)/)
-
-      // Collect candidate moves for a play search.
-      if (this.candidates && sc && pv) {
-        this.candidates.set(mpv, {
-          move: pv[1],
-          scoreNum: scoreToNum(sc[1] as 'cp' | 'mate', Number(sc[2])),
-        })
-      }
-      // Track the best line's score for evaluate() (multipv 1 only).
-      if (mpv === 1 && sc) {
-        this.lastScore = sc[1] === 'cp' ? { cp: Number(sc[2]) } : { mate: Number(sc[2]) }
-      }
+      if (sc) this.lastScore = sc[1] === 'cp' ? { cp: Number(sc[2]) } : { mate: Number(sc[2]) }
     }
 
     if (line.startsWith('bestmove')) {
@@ -133,12 +106,10 @@ export class Engine {
         cb(s)
         return
       }
-      const fallback = line.split(/\s+/)[1]
-      const chosen = this.selectMove() ?? fallback
+      const uci = line.split(/\s+/)[1]
       const cb = this.onBestMove
       this.onBestMove = null
-      this.candidates = null
-      if (cb && chosen && chosen !== '(none)') cb(chosen)
+      if (cb && uci && uci !== '(none)') cb(uci)
     }
   }
 
@@ -157,36 +128,12 @@ export class Engine {
 
   setStrength(s: StrengthSettings) {
     this.strength = s
-  }
-
-  /** Tunable selection parameters for the current rating. */
-  private policy(): { temp: number; cap: number } {
-    const t = clamp((this.strength.rating - 800) / (2000 - 800), 0, 1)
-    // temp: softmax temperature in centipawns. Low = almost always best move.
-    const temp = lerp(220, 18, t)
-    // cap: max centipawn loss vs best that is ever allowed. Hard blunder ceiling.
-    // 800 -> 350cp (can drop a minor sometimes), 2000 -> 60cp. A queen (~900) is
-    // never hung at any rating.
-    const cap = lerp(350, 60, t)
-    return { temp, cap }
-  }
-
-  /** Choose a move from the collected MultiPV candidates per the rating policy. */
-  private selectMove(): string | null {
-    if (!this.candidates || this.candidates.size === 0) return null
-    const cands = [...this.candidates.values()]
-    const best = Math.max(...cands.map((c) => c.scoreNum))
-    const { temp, cap } = this.policy()
-    const pool = cands.filter((c) => best - c.scoreNum <= cap)
-    if (pool.length === 0) return cands.find((c) => c.scoreNum === best)?.move ?? null
-    const weights = pool.map((c) => Math.exp(-(best - c.scoreNum) / temp))
-    const sum = weights.reduce((a, b) => a + b, 0)
-    let r = Math.random() * sum
-    for (let i = 0; i < pool.length; i++) {
-      r -= weights[i]
-      if (r <= 0) return pool[i].move
-    }
-    return pool[pool.length - 1].move
+    const { skill, depth } = ratingToSkillDepth(s.rating)
+    this.playDepth = depth
+    // Skill Level weakens by occasionally choosing a slightly worse candidate;
+    // at 20 there is no weakening, so the top of the slider plays best moves.
+    this.send('setoption name UCI_LimitStrength value false')
+    this.send(`setoption name Skill Level value ${skill}`)
   }
 
   // --- Search ------------------------------------------------------------
@@ -198,9 +145,10 @@ export class Engine {
   /** Ask for a move from the given FEN. Calls back with a UCI move string. */
   go(fen: string, cb: BestMoveCallback) {
     this.onBestMove = cb
-    this.candidates = this.useMultiPV ? new Map() : null
     this.send(`position fen ${fen}`)
-    this.send(`go movetime ${this.strength.moveTimeMs}`)
+    // Depth drives strength; movetime is a safety cap so strong levels in a
+    // complex position still answer promptly. Whichever is reached first wins.
+    this.send(`go depth ${this.playDepth} movetime ${this.strength.moveTimeMs}`)
   }
 
   /**
@@ -225,7 +173,6 @@ export class Engine {
   stop() {
     this.onBestMove = null
     this.onEval = null
-    this.candidates = null
     this.send('stop')
   }
 

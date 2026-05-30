@@ -87,7 +87,7 @@ export default function App() {
       if (!cancelled) analysis.setStrength({ rating: 3000, moveTimeMs: 1000 })
     })
     engine
-      .init({ multiPV: true })
+      .init()
       .then(() => {
         if (cancelled) return
         setEngineReady(true)

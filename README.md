@@ -48,27 +48,39 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
 - FEN paste/export in the board editor.
 - Hint button (best-move arrow) and a win/draw eval bar; tablebase-perfect opponent.
 
-## Engine strength model (why not UCI_Elo)
+## Engine strength model (Skill Level + depth)
 
-Stockfish's built-in `UCI_Elo` limiter reaches a target rating by **randomly injecting weak
-moves**. In practice that means even at 2000 it would, move to move, play wildly inconsistently and
-occasionally hang a piece outright (verified: in a trivial K+Q-vs-K win it shuffled the queen
-instead of mating). That is a poor opponent for endgame *technique* training.
+Two earlier approaches were tried and rejected:
+- **`UCI_Elo`** reaches a rating by randomly injecting weak moves, so it played inconsistently and
+  occasionally hung material even at 2000.
+- A home-grown **MultiPV softmax** picked "a move within X centipawns of best" — but in endgames
+  many moves keep the same winning eval while making *no progress* toward mate, so it dawdled and
+  felt weak (the "not playing the best move" complaint).
 
-Instead, the playing engine in `src/engine/stockfish.ts` uses **controlled MultiPV selection**:
-1. It searches normally with `MultiPV 5`, getting the top candidate moves and their evaluations.
-2. It picks among them with a rating-dependent softmax (`policy()` → `temp`, `cap`):
-   - `temp` (softmax temperature) shrinks as rating rises — strong ratings almost always take the
-     best move; weak ratings spread out.
-   - `cap` is a hard **blunder ceiling** in centipawns vs the best move (≈350cp at 800 → 60cp at
-     2000). A move worse than the cap is never chosen, so a queen is never hung at any rating.
+The current model in `src/engine/stockfish.ts` (`ratingToSkillDepth`) maps the 800–2000 slider onto
+Stockfish's **Skill Level (0–20) + a fixed search depth**, calibrated against Lichess's published AI
+levels (L5 = Skill 7/depth 5 ≈1500, L6 = Skill 11/depth 8 ≈1900, L7 = Skill 15/depth 13 ≈2300):
 
-The result is a consistent, calibratable opponent that makes human-scale imperfections rather than
-catastrophic ones. To retune feel, adjust `temp`/`cap` in `policy()`.
+| Slider | Skill | Depth |
+|--------|-------|-------|
+| 800    | 1     | 5     |
+| 1200   | 8     | 9     |
+| 1500   | 11    | 10    |
+| 2000   | 20    | 16    |
 
-**Two engines:** a playing engine (MultiPV, strength-shaped) and a separate analysis engine (full
-strength, `MultiPV 1`) that only ever evaluates positions, so blunder-checks/hints never slow down
-or weaken the opponent you're playing.
+Crucially the **top of the slider is full Skill 20 at depth 16**, so at 2000 it plays the best move.
+`go` sends `depth N movetime cap` together — depth drives strength, the thinking-time slider is a
+responsiveness cap (whichever is hit first).
+
+Verified by sampling best-move agreement in KQK / KRK / KPK (5 trials each):
+- **2000:** 5/5 best move in all three positions.
+- **1500:** 4–5/5.
+- **1000:** 2–4/5 (deliberately makes some imperfect-but-legal moves).
+
+To retune feel, adjust the `lerp` endpoints in `ratingToSkillDepth()`.
+
+**Two engines:** a playing engine (Skill+depth) and a separate full-strength analysis engine that
+only ever evaluates positions, so blunder-checks/hints never weaken the opponent you're playing.
 
 ## Deploying (hosted online)
 
