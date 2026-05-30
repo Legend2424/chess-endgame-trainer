@@ -9,25 +9,23 @@
 // A Lichess puzzle FEN is the position BEFORE the setup move; the first move in
 // `Moves` is the opponent's move that creates the puzzle. We store the FEN and
 // that first move as strings; the browser applies the move when the puzzle is
-// chosen (one move per puzzle PLAYED, not millions at build time). This keeps
-// this script pure string work, so it runs in well under a minute.
+// chosen, so the human is to move with a concrete win/hold task ahead.
+//
+// Decompression: Node 24's built-in createZstdDecompress chokes on this file
+// ("Unknown frame descriptor"), so we use the pure-JS `fzstd` streaming decoder,
+// which handles it fine. (npm i fzstd — installed with --no-save.)
 //
 // Run: node --max-old-space-size=4096 scripts/process-puzzles.mjs
 
 import fs from 'node:fs'
-import zlib from 'node:zlib'
-import readline from 'node:readline'
+import * as fzstd from 'fzstd'
 
 const SRC = 'C:\\Claude\\_work\\puzzles.csv.zst'
 const OUT_DIR = 'public/puzzles'
 const OUT = `${OUT_DIR}/endgames.json`
 
-// How many puzzles to keep in the shipped bundle. Sampled evenly across the
-// full endgame set to preserve theme + rating diversity.
 const TARGET = 220_000
 
-// Curated category themes; a bitmask is built per puzzle over these (order =
-// bit index). Only themes that actually occur are shown as categories.
 const CATEGORY_THEMES = [
   ['endgame', 'All endgames'],
   ['pawnEndgame', 'Pawn endgame'],
@@ -54,20 +52,18 @@ const themeIndex = new Map(CATEGORY_THEMES.map(([id], i) => [id, i]))
 let totalRows = 0
 const kept = [] // [fen, firstMove, rating, mask]
 
-const input = fs.createReadStream(SRC).pipe(zlib.createZstdDecompress())
-const rl = readline.createInterface({ input, crlfDelay: Infinity })
-
+const decoder = new TextDecoder()
+let carry = '' // partial line spanning chunk boundaries
 let isHeader = true
-for await (const line of rl) {
-  if (isHeader) { isHeader = false; continue }
-  if (!line) continue
-  totalRows++
-  // Safe to split on comma: FEN/Themes/OpeningTags contain spaces, not commas.
-  const cols = line.split(',')
-  if (cols.length < 8) continue
-  const themes = cols[7]
-  if (!themes || !themes.includes('endgame')) continue
 
+function handleLine(line) {
+  if (isHeader) { isHeader = false; return }
+  if (!line) return
+  totalRows++
+  const cols = line.split(',')
+  if (cols.length < 8) return
+  const themes = cols[7]
+  if (!themes || !themes.includes('endgame')) return
   let mask = 0
   for (const t of themes.split(' ')) {
     const idx = themeIndex.get(t)
@@ -75,9 +71,38 @@ for await (const line of rl) {
   }
   const fen = cols[1]
   const firstMove = cols[2].split(' ')[0]
-  if (!fen || !firstMove) continue
+  if (!fen || !firstMove) return
   kept.push([fen, firstMove, parseInt(cols[3], 10) || 1500, mask])
 }
+
+// fzstd streaming: feed compressed chunks, get decompressed Uint8Array chunks.
+const stream = new fzstd.Decompress((chunk) => {
+  carry += decoder.decode(chunk, { stream: true })
+  let nl
+  while ((nl = carry.indexOf('\n')) !== -1) {
+    let line = carry.slice(0, nl)
+    if (line.endsWith('\r')) line = line.slice(0, -1)
+    handleLine(line)
+    carry = carry.slice(nl + 1)
+  }
+})
+
+await new Promise((resolve, reject) => {
+  const rs = fs.createReadStream(SRC)
+  rs.on('data', (buf) => {
+    try { stream.push(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)) }
+    catch (e) { reject(e) }
+  })
+  rs.on('end', () => {
+    try {
+      // Flush the final (possibly empty) frame and any trailing line.
+      stream.push(new Uint8Array(0), true)
+      if (carry) handleLine(carry)
+      resolve()
+    } catch (e) { reject(e) }
+  })
+  rs.on('error', reject)
+})
 
 // Sample down to TARGET, evenly across the collection (preserves distribution).
 let sampled = kept
