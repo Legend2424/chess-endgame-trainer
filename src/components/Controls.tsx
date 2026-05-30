@@ -13,6 +13,10 @@ interface ControlsProps {
   onMoveTimeChange: (s: number) => void
   defendMode: boolean
   onDefendChange: (d: boolean) => void
+  baseMin: number
+  onBaseMinChange: (m: number) => void
+  incSec: number
+  onIncSecChange: (s: number) => void
   onRandomize: () => void
   onUndo: () => void
   canUndo: boolean
@@ -27,6 +31,17 @@ function ratingLabel(r: number): string {
   if (r < 1900) return 'Strong'
   return 'Expert'
 }
+
+const BASE_OPTIONS = [
+  { v: 0, label: 'Off' },
+  { v: 1, label: '1 min' },
+  { v: 3, label: '3 min' },
+  { v: 5, label: '5 min' },
+  { v: 10, label: '10 min' },
+  { v: 15, label: '15 min' },
+  { v: 30, label: '30 min' },
+]
+const INC_OPTIONS = [0, 2, 3, 5, 10]
 
 export default function Controls(p: ControlsProps) {
   const usesSlider = p.theme.materialBalance === null
@@ -56,6 +71,37 @@ export default function Controls(p: ControlsProps) {
           ))}
         </select>
         <p className="ctrl-desc">{p.theme.description}</p>
+      </section>
+
+      <section className="ctrl-section">
+        <label className="ctrl-label">Clock</label>
+        <div className="row gap">
+          <select
+            className="grow"
+            value={p.baseMin}
+            onChange={(e) => p.onBaseMinChange(Number(e.target.value))}
+            disabled={p.disabled}
+          >
+            {BASE_OPTIONS.map((o) => (
+              <option key={o.v} value={o.v}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            className="grow"
+            value={p.incSec}
+            onChange={(e) => p.onIncSecChange(Number(e.target.value))}
+            disabled={p.disabled || p.baseMin === 0}
+          >
+            {INC_OPTIONS.map((s) => (
+              <option key={s} value={s}>+{s}s / move</option>
+            ))}
+          </select>
+        </div>
+        <p className="ctrl-hint">
+          {p.baseMin === 0
+            ? 'No clock — play untimed.'
+            : `${p.baseMin} min + ${p.incSec}s increment. Changing this restarts the position.`}
+        </p>
       </section>
 
       <section className="ctrl-section">

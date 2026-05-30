@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import Board from './components/Board'
 import Controls from './components/Controls'
+import Clock from './components/Clock'
 import { Engine, type Score } from './engine/stockfish'
 import { THEMES, themeById } from './chess/endgames'
 
@@ -13,6 +14,7 @@ type Status =
 
 type Color = 'w' | 'b'
 const opposite = (c: Color): Color => (c === 'w' ? 'b' : 'w')
+const now = () => performance.now()
 
 // Convert an engine Score (side-to-move perspective) into a single comparable
 // number in centipawns, mapping mate distances to large values.
@@ -55,7 +57,19 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [ply, setPly] = useState(0)
 
+  // --- Clock state -----------------------------------------------------------
+  const [baseMin, setBaseMin] = useState(10) // 0 = clock off
+  const [incSec, setIncSec] = useState(5)
+  const whiteMsRef = useRef(0)
+  const blackMsRef = useRef(0)
+  const activeRef = useRef<Color | null>(null) // whose clock is ticking
+  const lastTickRef = useRef(0)
+  const [, forceTick] = useState(0) // re-render for clock display
+  const statusRef = useRef<Status>(status)
+  statusRef.current = status
+
   const theme = useMemo(() => themeById(themeId), [themeId])
+  const clockOn = baseMin > 0
 
   // --- Engine boot -----------------------------------------------------------
   useEffect(() => {
@@ -64,12 +78,12 @@ export default function App() {
     const analysis = new Engine()
     engineRef.current = engine
     analysisRef.current = analysis
-    // The analysis engine plays at full strength (it only ever evaluates).
+    // The analysis engine plays at full strength and only ever evaluates.
     analysis.init().then(() => {
       if (!cancelled) analysis.setStrength({ rating: 3000, moveTimeMs: 1000 })
     })
     engine
-      .init()
+      .init({ multiPV: true })
       .then(() => {
         if (cancelled) return
         setEngineReady(true)
@@ -97,6 +111,60 @@ export default function App() {
     })
   }, [rating, moveTimeSec, engineReady])
 
+  // --- Clock ticking ---------------------------------------------------------
+  const flag = useCallback((loser: Color) => {
+    activeRef.current = null
+    const playerLost = loser === playerColorRef.current
+    setStatus({
+      kind: 'over',
+      text: playerLost ? '⏱ You ran out of time — the engine wins.' : '⏱ The engine flagged — you win on time!',
+    })
+    engineRef.current?.stop()
+  }, [])
+
+  useEffect(() => {
+    if (!clockOn) return
+    const id = setInterval(() => {
+      const active = activeRef.current
+      if (!active) return
+      const k = statusRef.current.kind
+      if (k !== 'play' && k !== 'thinking') return
+      const t = now()
+      const delta = t - lastTickRef.current
+      lastTickRef.current = t
+      const ref = active === 'w' ? whiteMsRef : blackMsRef
+      ref.current = Math.max(0, ref.current - delta)
+      if (ref.current <= 0) flag(active)
+      forceTick((n) => n + 1)
+    }, 100)
+    return () => clearInterval(id)
+  }, [clockOn, flag])
+
+  // Reset both clocks to the base time.
+  const resetClocks = useCallback(() => {
+    const ms = baseMin * 60_000
+    whiteMsRef.current = ms
+    blackMsRef.current = ms
+    lastTickRef.current = now()
+  }, [baseMin])
+
+  // Add increment to the side that just moved and hand the clock to the mover's
+  // opponent (the new side to move). Called right after a move is applied.
+  const clockAfterMove = useCallback(
+    (game: Chess, gameOver: boolean) => {
+      if (!clockOn) {
+        activeRef.current = null
+        return
+      }
+      const mover = opposite(game.turn() as Color)
+      const ref = mover === 'w' ? whiteMsRef : blackMsRef
+      ref.current += incSec * 1000
+      lastTickRef.current = now()
+      activeRef.current = gameOver ? null : (game.turn() as Color)
+    },
+    [clockOn, incSec],
+  )
+
   // --- Sync the fen / move count into React ----------------------------------
   const syncBoard = useCallback((game: Chess) => {
     setFen(game.fen())
@@ -113,7 +181,6 @@ export default function App() {
     const analysis = analysisRef.current
     if (!analysis) return
     const myGen = genIdRef.current
-    // Player to move => score is already from the player's perspective.
     analysis.evaluate(game.fen()).then((s) => {
       if (myGen === genIdRef.current) prevScoreRef.current = scoreToNum(s)
     })
@@ -162,9 +229,11 @@ export default function App() {
         return
       }
       syncBoard(game)
-      if (!reportOrContinue(game)) beginPlayerTurn(game)
+      const over = reportOrContinue(game)
+      clockAfterMove(game, over)
+      if (!over) beginPlayerTurn(game)
     })
-  }, [syncBoard, reportOrContinue, beginPlayerTurn])
+  }, [syncBoard, reportOrContinue, beginPlayerTurn, clockAfterMove])
 
   // --- Blunder detection on the player's move --------------------------------
   const checkBlunder = useCallback((fenAfterPlayerMove: string) => {
@@ -174,9 +243,7 @@ export default function App() {
     const myGen = genIdRef.current
     analysis.evaluate(fenAfterPlayerMove).then((s) => {
       if (myGen !== genIdRef.current) return
-      // After the player's move it's the opponent to move, so negate to get the
-      // player's perspective.
-      const afterPlayer = -scoreToNum(s)
+      const afterPlayer = -scoreToNum(s) // negate: opponent to move after our move
       const before = baseline
       const bBefore = bucketOf(before)
       const bAfter = bucketOf(afterPlayer)
@@ -210,10 +277,12 @@ export default function App() {
       const playerDeliveredMate = game.isCheckmate()
       if (!playerDeliveredMate) checkBlunder(game.fen())
 
-      if (!reportOrContinue(game)) askEngine(game)
+      const over = reportOrContinue(game)
+      clockAfterMove(game, over)
+      if (!over) askEngine(game)
       return true
     },
-    [status, syncBoard, checkBlunder, reportOrContinue, askEngine],
+    [status, syncBoard, checkBlunder, reportOrContinue, askEngine, clockAfterMove],
   )
 
   // --- Position setup --------------------------------------------------------
@@ -226,8 +295,6 @@ export default function App() {
       prevScoreRef.current = null
       engineRef.current?.newGame()
 
-      // The generator always builds White as the stronger/active side. When
-      // defending, the human takes the weaker side instead.
       const strongColor = pos.playerColor as Color
       const playerCol: Color = defend ? opposite(strongColor) : strongColor
       playerColorRef.current = playerCol
@@ -235,41 +302,47 @@ export default function App() {
       setGoalText(defend ? 'Defend — hold the draw / survive as long as you can.' : pos.goal)
       setNotice(null)
       syncBoard(game)
+      resetClocks()
 
       if (game.isGameOver()) {
+        activeRef.current = null
         setStatus({ kind: 'over', text: 'Generated a finished position — try Randomize again.' })
         return
       }
+      activeRef.current = clockOn ? (game.turn() as Color) : null
+      lastTickRef.current = now()
       if (game.turn() !== playerCol) askEngine(game)
       else beginPlayerTurn(game)
     },
-    [syncBoard, askEngine, beginPlayerTurn],
+    [syncBoard, askEngine, beginPlayerTurn, resetClocks, clockOn],
   )
 
   // --- Takeback --------------------------------------------------------------
   const undo = useCallback(() => {
     const game = gameRef.current
     if (game.history().length === 0) return
-    genIdRef.current++ // cancel any in-flight engine search / eval callbacks
+    genIdRef.current++
     engineRef.current?.stop()
     const playerCol = playerColorRef.current
 
-    game.undo() // undo the most recent ply
-    // Step back until it is the player's turn again (removes the engine reply).
+    game.undo()
     if (game.turn() !== playerCol && game.history().length > 0) game.undo()
 
     setNotice(null)
     syncBoard(game)
+    lastTickRef.current = now()
 
     if (game.isGameOver()) {
+      activeRef.current = null
       reportOrContinue(game)
     } else if (game.turn() !== playerCol) {
-      // Only happens if we rewound to a start where the engine moves first.
+      activeRef.current = clockOn ? (game.turn() as Color) : null
       askEngine(game)
     } else {
+      activeRef.current = clockOn ? (game.turn() as Color) : null
       beginPlayerTurn(game)
     }
-  }, [syncBoard, reportOrContinue, askEngine, beginPlayerTurn])
+  }, [syncBoard, reportOrContinue, askEngine, beginPlayerTurn, clockOn])
 
   // --- Controls handlers -----------------------------------------------------
   const onRandomize = () => newPosition(themeId, handicap, defendMode)
@@ -285,15 +358,28 @@ export default function App() {
     setDefendMode(d)
     newPosition(themeId, handicap, d)
   }
+  const onBaseMinChange = (m: number) => setBaseMin(m)
+  const onIncSecChange = (s: number) => setIncSec(s)
   const flip = () => {
     const c = opposite(playerColorRef.current)
     playerColorRef.current = c
     setPlayerColor(c)
   }
 
+  // Apply a freshly chosen time control by restarting the position.
+  useEffect(() => {
+    if (!engineReady) return
+    newPosition(themeId, handicap, defendMode)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseMin, incSec])
+
   const orientation = playerColor === 'w' ? 'white' : 'black'
   const interactive = status.kind === 'play'
   const canUndo = engineReady && ply > 0 && status.kind !== 'thinking' && status.kind !== 'loading'
+
+  const playerMs = playerColor === 'w' ? whiteMsRef.current : blackMsRef.current
+  const oppMs = playerColor === 'w' ? blackMsRef.current : whiteMsRef.current
+  const oppColor = opposite(playerColor)
 
   return (
     <div className="app">
@@ -304,6 +390,9 @@ export default function App() {
 
       <div className="layout">
         <div className="board-pane">
+          {clockOn && (
+            <Clock ms={oppMs} active={activeRef.current === oppColor} label="Opponent" />
+          )}
           <Board
             fen={fen}
             orientation={orientation}
@@ -311,6 +400,9 @@ export default function App() {
             onMove={onMove}
             lastMove={lastMove}
           />
+          {clockOn && (
+            <Clock ms={playerMs} active={activeRef.current === playerColor} label="You" />
+          )}
           <StatusBar
             status={status}
             goal={goalText}
@@ -333,6 +425,10 @@ export default function App() {
           onMoveTimeChange={setMoveTimeSec}
           defendMode={defendMode}
           onDefendChange={onDefendChange}
+          baseMin={baseMin}
+          onBaseMinChange={onBaseMinChange}
+          incSec={incSec}
+          onIncSecChange={onIncSecChange}
           onRandomize={onRandomize}
           onUndo={undo}
           canUndo={canUndo}

@@ -50,6 +50,36 @@ body {
   max-width: 560px;
 }
 
+.clock {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  max-width: 560px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  margin: 6px 0;
+}
+.clock.active {
+  border-color: var(--accent);
+  background: #34362b;
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.clock.low .clock-time { color: #e06a5a; }
+.clock.active.low { border-color: #e06a5a; box-shadow: 0 0 0 1px #e06a5a inset; }
+.clock-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.clock-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.7rem;
+  font-weight: 700;
+}
+
 .status-wrap {
   margin-top: 12px;
   max-width: 560px;

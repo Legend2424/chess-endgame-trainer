@@ -22,9 +22,10 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
   bishop+knight mates, rook vs pawns, queen vs advanced pawn, N+2P vs N, opposite bishops,
   Q+P vs Q, minor vs pawns, and a **🎲 Random (by material)** generator.
 - **“Randomize again”** button for a fresh legal position each click.
-- **Opponent strength 800–2000**, adjustable live (even mid-game):
-  - ≥1320 uses Stockfish's own `UCI_Elo` limiter.
-  - <1320 uses `Skill Level` + a search-depth cap (low ratings are approximate — see calibration note).
+- **Opponent strength 800–2000**, adjustable live (even mid-game). Uses **MultiPV candidate
+  selection** (not Stockfish's `UCI_Elo`) — see the engine note below for why.
+- **Countdown clock + increment** — selectable base time (1–30 min, or Off) and per-move
+  increment (0–10 s), per side, with flag detection. Changing it restarts the position.
 - **Material handicap −2…+5** (used by the Random-by-material theme).
 - **Engine thinking time 1–5 s/move** (applies to the ≥1320 "strong" tier; weak ratings play
   quickly by design — see the engine note below).
@@ -38,26 +39,30 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
 
 ## Deferred (architected for, not yet built)
 
-- Countdown clock + per-move increment.
 - Board editor (drag pieces on/off an empty board) + FEN paste.
 - Hint button (best-move arrow) and a win/draw eval bar; tablebase-perfect opponent.
 
-## Engine strength calibration note
+## Engine strength model (why not UCI_Elo)
 
-The low end (800–1300) is approximate. Stockfish's own Elo limiter only goes down to 1320,
-so below that we combine a reduced Skill Level with a shallow search depth. If the engine feels
-too strong/weak at a given rating, tune `depthCap()` and the skill mapping in
-`src/engine/stockfish.ts`.
+Stockfish's built-in `UCI_Elo` limiter reaches a target rating by **randomly injecting weak
+moves**. In practice that means even at 2000 it would, move to move, play wildly inconsistently and
+occasionally hang a piece outright (verified: in a trivial K+Q-vs-K win it shuffled the queen
+instead of mating). That is a poor opponent for endgame *technique* training.
 
-**Engine quirk worked around:** with `Skill Level` active, sending a `go` command that specifies
-BOTH `depth` and `movetime` makes this Stockfish build occasionally return a move for the wrong
-side. So the weak tier sends `go depth N` only (fast + weak), and the strong tier sends
-`go movetime N` only (hence the thinking-time slider mainly affects ≥1320 play). Don't recombine
-them without re-testing.
+Instead, the playing engine in `src/engine/stockfish.ts` uses **controlled MultiPV selection**:
+1. It searches normally with `MultiPV 5`, getting the top candidate moves and their evaluations.
+2. It picks among them with a rating-dependent softmax (`policy()` → `temp`, `cap`):
+   - `temp` (softmax temperature) shrinks as rating rises — strong ratings almost always take the
+     best move; weak ratings spread out.
+   - `cap` is a hard **blunder ceiling** in centipawns vs the best move (≈350cp at 800 → 60cp at
+     2000). A move worse than the cap is never chosen, so a queen is never hung at any rating.
 
-**Two engines:** a playing engine (strength-limited) and a separate analysis engine (full
-strength) that only ever evaluates positions, so hints/blunder-checks never slow down or weaken
-the opponent you're playing.
+The result is a consistent, calibratable opponent that makes human-scale imperfections rather than
+catastrophic ones. To retune feel, adjust `temp`/`cap` in `policy()`.
+
+**Two engines:** a playing engine (MultiPV, strength-shaped) and a separate analysis engine (full
+strength, `MultiPV 1`) that only ever evaluates positions, so blunder-checks/hints never slow down
+or weaken the opponent you're playing.
 
 ## Deploying (hosted online)
 
