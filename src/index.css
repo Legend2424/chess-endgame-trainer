@@ -50,6 +50,65 @@ body {
   max-width: 560px;
 }
 
+/* Board + left rail (eval bar / clocks) side by side. */
+.board-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+.board-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.rail-clocks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* In the rail, clocks are compact and stacked. */
+.board-rail .clock {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 92px;
+  margin: 0;
+}
+
+/* Evaluation bar (vertical, white fills from the bottom). */
+.evalbar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.evalbar {
+  position: relative;
+  width: 26px;
+  flex: 1 1 auto;
+  min-height: 200px;
+  background: #403d3a; /* black's share */
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.evalbar-white {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: #f0f0ea; /* white's share */
+  transition: height 0.3s ease;
+}
+.evalbar-verdict {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+  max-width: 92px;
+  line-height: 1.2;
+}
+
 .clock {
   display: flex;
   align-items: baseline;
@@ -153,6 +212,20 @@ body {
   border-radius: 8px;
   padding: 2px 4px;
   margin: 6px 0;
+}
+/* Side trays for the board editor: stack pieces vertically beside the board. */
+.editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.tray-vertical {
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 2px;
 }
 .editor-controls {
   display: flex;

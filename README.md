@@ -22,13 +22,18 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
   bishop+knight mates, rook vs pawns, queen vs advanced pawn, N+2P vs N, opposite bishops,
   Q+P vs Q, minor vs pawns, and a **🎲 Random (by material)** generator.
 - **“Randomize again”** button for a fresh legal position each click.
-- **Opponent strength 800–2000**, adjustable live (even mid-game). Uses **MultiPV candidate
-  selection** (not Stockfish's `UCI_Elo`) — see the engine note below for why.
+- The endgame-type list starts with two random options — **🎲 Random endgame** (a different
+  classic scenario each time) and **🎲 Random (by material)** — followed by the specific scenarios.
+- **Opponent strength 800–2000**, adjustable live (even mid-game). Uses **Skill Level + search
+  depth** calibrated to Lichess AI levels — see the engine note below.
 - **Countdown clock + increment** — selectable base time (1–30 min, or Off) and per-move
-  increment (0–10 s), per side, with flag detection. Changing it restarts the position.
+  increment (0–10 s), per side, with flag detection. Shown in a rail to the **left** of the board
+  so the board keeps full width. Changing it restarts the position.
+- **Evaluation bar** (off by default; tick "Show evaluation bar") — a vertical bar in the left rail
+  showing whether the position is winning/drawn/losing, with a short verdict, from the full-strength
+  analysis engine.
 - **Material handicap −2…+5** (used by the Random-by-material theme).
-- **Engine thinking time 1–5 s/move** (applies to the ≥1320 "strong" tier; weak ratings play
-  quickly by design — see the engine note below).
+- **Engine thinking time 1–5 s/move** (a responsiveness cap; depth drives strength).
 - chess.com-style board: drag **and** click-to-move, legal-move dots, last-move highlight,
   and a promotion dialog.
 - **Take back** — undo your last move (and the engine's reply) to retry the technique.
@@ -46,7 +51,12 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
 ## Deferred (architected for, not yet built)
 
 - FEN paste/export in the board editor.
-- Hint button (best-move arrow) and a win/draw eval bar; tablebase-perfect opponent.
+- Hint button (best-move arrow); tablebase-perfect opponent.
+- **Real-game endgame library** — optionally seed positions from the
+  [Lichess open puzzle database](https://database.lichess.org/) (CC0): millions of FENs tagged with
+  an `endgame` theme + difficulty rating, derived from real games. Would let the trainer serve
+  authentic, reachable endgames filtered by the rating slider. (Plan: bundle a filtered/trimmed
+  subset as a static JSON shipped with the app, since the full CSV is large.)
 
 ## Engine strength model (Skill Level + depth)
 

@@ -36,7 +36,10 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
     const el = containerRef.current
     if (!el) return
     const ro = new ResizeObserver(() => {
-      setWidth(Math.max(280, Math.min(560, el.clientWidth)))
+      // Leave room for the two side trays (each ~1 square wide) + gaps, so the
+      // board never overflows its container.
+      const avail = el.clientWidth
+      setWidth(Math.max(240, Math.min(520, Math.round(avail * 0.78))))
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -95,7 +98,7 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
   }
 
   const Tray = ({ pieces }: { pieces: string[] }) => (
-    <div className="tray">
+    <div className="tray tray-vertical">
       {pieces.map((p) => (
         <SparePiece key={p} piece={p as never} width={spareWidth} dndId="BoardEditor" />
       ))}
@@ -106,31 +109,31 @@ export default function BoardEditor({ onStart, onCancel }: BoardEditorProps) {
     <ChessboardDnDProvider>
       <div className="editor" ref={containerRef}>
         <p className="editor-help">
-          Drag pieces from the trays onto the board. Drag a piece off the board (or click it) to
-          remove it. Then choose who moves first and press <strong>Start game</strong>.
+          Drag pieces from the side trays onto the board. Drag a piece off the board (or click it)
+          to remove it. Then choose who moves first and press <strong>Start game</strong>.
         </p>
 
-        <Tray pieces={BLACK_PIECES} />
-
-        <div className="board-container">
-          <Chessboard
-            id="BoardEditor"
-            position={position}
-            boardWidth={width}
-            onSparePieceDrop={onSparePieceDrop}
-            onPieceDrop={onPieceDrop}
-            onPieceDropOffBoard={onPieceDropOffBoard}
-            onSquareClick={onSquareClick}
-            dropOffBoardAction="trash"
-            arePiecesDraggable
-            customBoardStyle={{ borderRadius: '6px', boxShadow: '0 6px 20px rgba(0,0,0,0.35)' }}
-            customDarkSquareStyle={{ backgroundColor: DARK }}
-            customLightSquareStyle={{ backgroundColor: LIGHT }}
-            animationDuration={120}
-          />
+        <div className="editor-row">
+          <Tray pieces={BLACK_PIECES} />
+          <div className="board-container">
+            <Chessboard
+              id="BoardEditor"
+              position={position}
+              boardWidth={width}
+              onSparePieceDrop={onSparePieceDrop}
+              onPieceDrop={onPieceDrop}
+              onPieceDropOffBoard={onPieceDropOffBoard}
+              onSquareClick={onSquareClick}
+              dropOffBoardAction="trash"
+              arePiecesDraggable
+              customBoardStyle={{ borderRadius: '6px', boxShadow: '0 6px 20px rgba(0,0,0,0.35)' }}
+              customDarkSquareStyle={{ backgroundColor: DARK }}
+              customLightSquareStyle={{ backgroundColor: LIGHT }}
+              animationDuration={120}
+            />
+          </div>
+          <Tray pieces={WHITE_PIECES} />
         </div>
-
-        <Tray pieces={WHITE_PIECES} />
 
         {error && <div className="notice">⚠ {error}</div>}
 

@@ -23,7 +23,7 @@ function materialToPieces(value: number): PieceChar[] {
   return out
 }
 
-export const THEMES: EndgameTheme[] = [
+const SCENARIOS: EndgameTheme[] = [
   {
     id: 'kp_vs_k',
     name: 'King + Pawn vs King',
@@ -219,30 +219,48 @@ export const THEMES: EndgameTheme[] = [
         goal: 'Hold or win — blockade the pawns with your piece and king.',
       }),
   },
-  {
-    id: 'random_material',
-    name: '🎲 Random (by material)',
-    description: 'A fully random endgame at the material advantage you choose with the slider.',
-    difficulty: 'intermediate',
-    materialBalance: null,
-    generate: (opts: GenerateOptions) => {
-      const h = opts.handicap
-      // Opponent gets a small random base; player gets that + the handicap.
-      const oppBase = Math.floor(Math.random() * 4) // 0..3
-      const playerVal = Math.max(0, oppBase + h)
-      const oppVal = Math.max(0, oppBase + Math.max(0, -h))
-      const white: { char: PieceChar }[] = [{ char: 'K' }, ...materialToPieces(playerVal).map((c) => ({ char: c }))]
-      const blackPieces = materialToPieces(oppVal).map((c) => c.toLowerCase() as PieceChar)
-      const black: { char: PieceChar }[] = [{ char: 'k' }, ...blackPieces.map((c) => ({ char: c }))]
-      const sign = h >= 0 ? `+${h}` : `${h}`
-      return build({
-        white,
-        black,
-        goal: `Play this random endgame (you are ${sign} in material).`,
-      })
-    },
-  },
 ]
+
+const RANDOM_MATERIAL: EndgameTheme = {
+  id: 'random_material',
+  name: '🎲 Random (by material)',
+  description: 'A fully random endgame at the material advantage you choose with the slider.',
+  difficulty: 'intermediate',
+  materialBalance: null,
+  generate: (opts: GenerateOptions) => {
+    const h = opts.handicap
+    // Opponent gets a small random base; player gets that + the handicap.
+    const oppBase = Math.floor(Math.random() * 4) // 0..3
+    const playerVal = Math.max(0, oppBase + h)
+    const oppVal = Math.max(0, oppBase + Math.max(0, -h))
+    const white: { char: PieceChar }[] = [{ char: 'K' }, ...materialToPieces(playerVal).map((c) => ({ char: c }))]
+    const blackPieces = materialToPieces(oppVal).map((c) => c.toLowerCase() as PieceChar)
+    const black: { char: PieceChar }[] = [{ char: 'k' }, ...blackPieces.map((c) => ({ char: c }))]
+    const sign = h >= 0 ? `+${h}` : `${h}`
+    return build({
+      white,
+      black,
+      goal: `Play this random endgame (you are ${sign} in material).`,
+    })
+  },
+}
+
+// The default first option: pick one of the specific scenarios at random each
+// time, so "Randomize again" rolls a fresh kind of endgame too.
+const RANDOM_ANY: EndgameTheme = {
+  id: 'random_any',
+  name: '🎲 Random endgame',
+  description: 'A random mix — each time you get a different classic endgame scenario.',
+  difficulty: 'intermediate',
+  materialBalance: null,
+  generate: (opts: GenerateOptions) => {
+    const pick = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)]
+    return pick.generate(opts)
+  },
+}
+
+// Order: the two "random" options first, then the specific scenarios.
+export const THEMES: EndgameTheme[] = [RANDOM_ANY, RANDOM_MATERIAL, ...SCENARIOS]
 
 export function themeById(id: string): EndgameTheme {
   return THEMES.find((t) => t.id === id) ?? THEMES[0]

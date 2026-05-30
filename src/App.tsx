@@ -3,6 +3,7 @@ import { Chess } from 'chess.js'
 import Board from './components/Board'
 import Controls from './components/Controls'
 import Clock from './components/Clock'
+import EvalBar from './components/EvalBar'
 import BoardEditor from './components/BoardEditor'
 import { Engine, type Score } from './engine/stockfish'
 import { THEMES, themeById } from './chess/endgames'
@@ -60,6 +61,10 @@ export default function App() {
   const [mode, setMode] = useState<'play' | 'editor'>('play')
   const modeRef = useRef(mode)
   modeRef.current = mode
+
+  // --- Eval bar (hidden by default; toggled in Controls) ---------------------
+  const [evalOn, setEvalOn] = useState(false)
+  const [evalScore, setEvalScore] = useState<Score | null>(null) // White's perspective
 
   // --- Clock state -----------------------------------------------------------
   const [baseMin, setBaseMin] = useState(10) // 0 = clock off
@@ -409,6 +414,26 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseMin, incSec])
 
+  // Live eval bar: whenever the position changes (and the bar is on), ask the
+  // full-strength analysis engine for the current eval, converted to White's POV.
+  useEffect(() => {
+    if (!engineReady || !evalOn || mode !== 'play') return
+    const analysis = analysisRef.current
+    if (!analysis) return
+    let cancelled = false
+    const turn = (fen.split(' ')[1] as Color) ?? 'w'
+    analysis.evaluate(fen, 12).then((s) => {
+      if (cancelled || !s) return
+      // evaluate() returns the score from the side-to-move's POV; flip to White.
+      const white: Score =
+        turn === 'w' ? s : s.mate !== undefined ? { mate: -s.mate } : { cp: -(s.cp ?? 0) }
+      setEvalScore(white)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [fen, evalOn, engineReady, mode])
+
   const orientation = playerColor === 'w' ? 'white' : 'black'
   const interactive = status.kind === 'play'
   const canUndo = engineReady && ply > 0 && status.kind !== 'thinking' && status.kind !== 'loading'
@@ -430,19 +455,27 @@ export default function App() {
             <BoardEditor onStart={startCustom} onCancel={cancelEditor} />
           ) : (
             <>
-              {clockOn && (
-                <Clock ms={oppMs} active={activeRef.current === oppColor} label="Opponent" />
-              )}
-              <Board
-                fen={fen}
-                orientation={orientation}
-                interactive={interactive}
-                onMove={onMove}
-                lastMove={lastMove}
-              />
-              {clockOn && (
-                <Clock ms={playerMs} active={activeRef.current === playerColor} label="You" />
-              )}
+              <div className="board-row">
+                {/* Left rail: eval bar + both clocks, so the board keeps full width. */}
+                {(evalOn || clockOn) && (
+                  <div className="board-rail">
+                    {evalOn && <EvalBar score={evalScore} playerColor={playerColor} />}
+                    {clockOn && (
+                      <div className="rail-clocks">
+                        <Clock ms={oppMs} active={activeRef.current === oppColor} label="Opponent" />
+                        <Clock ms={playerMs} active={activeRef.current === playerColor} label="You" />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Board
+                  fen={fen}
+                  orientation={orientation}
+                  interactive={interactive}
+                  onMove={onMove}
+                  lastMove={lastMove}
+                />
+              </div>
               <StatusBar
                 status={status}
                 goal={goalText}
@@ -467,6 +500,8 @@ export default function App() {
           onMoveTimeChange={setMoveTimeSec}
           defendMode={defendMode}
           onDefendChange={onDefendChange}
+          evalOn={evalOn}
+          onEvalChange={setEvalOn}
           baseMin={baseMin}
           onBaseMinChange={onBaseMinChange}
           incSec={incSec}

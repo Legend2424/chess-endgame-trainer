@@ -13,6 +13,8 @@ interface ControlsProps {
   onMoveTimeChange: (s: number) => void
   defendMode: boolean
   onDefendChange: (d: boolean) => void
+  evalOn: boolean
+  onEvalChange: (v: boolean) => void
   baseMin: number
   onBaseMinChange: (m: number) => void
   incSec: number
@@ -130,6 +132,19 @@ export default function Controls(p: ControlsProps) {
             ? 'You play the harder side — try to hold a draw or survive.'
             : 'You play the stronger side and try to convert the win.'}
         </p>
+      </section>
+
+      <section className="ctrl-section">
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={p.evalOn}
+            onChange={(e) => p.onEvalChange(e.target.checked)}
+            disabled={p.disabled}
+          />
+          <span>Show evaluation bar</span>
+        </label>
+        <p className="ctrl-hint">A bar beside the board showing if the position is winning, drawn, or losing.</p>
       </section>
 
       <section className="ctrl-section">
