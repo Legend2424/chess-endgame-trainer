@@ -15,6 +15,12 @@ export interface StrengthSettings {
   moveTimeMs: number
 }
 
+/** A position evaluation from the perspective of the side to move. */
+export interface Score {
+  cp?: number
+  mate?: number
+}
+
 type BestMoveCallback = (uci: string) => void
 
 const ENGINE_URL = `${import.meta.env.BASE_URL}engine/stockfish-nnue-16-single.js`
@@ -24,6 +30,9 @@ export class Engine {
   private ready = false
   private readyWaiters: Array<() => void> = []
   private onBestMove: BestMoveCallback | null = null
+  private onEval: ((s: Score | null) => void) | null = null
+  private lastScore: Score | null = null
+  private evalQueue: Promise<Score | null> = Promise.resolve(null)
   private strength: StrengthSettings = { rating: 1200, moveTimeMs: 3000 }
 
   /** Load the wasm engine and complete the UCI handshake. */
@@ -63,7 +72,20 @@ export class Engine {
         this.lineWaiters.splice(i, 1)
       }
     }
+    // Track the most recent score reported during a search (for evaluate()).
+    if (line.startsWith('info') && line.includes(' score ')) {
+      const m = line.match(/score (cp|mate) (-?\d+)/)
+      if (m) this.lastScore = m[1] === 'cp' ? { cp: Number(m[2]) } : { mate: Number(m[2]) }
+    }
     if (line.startsWith('bestmove')) {
+      // An evaluate() search takes priority over a play search on this worker.
+      if (this.onEval) {
+        const cb = this.onEval
+        const s = this.lastScore
+        this.onEval = null
+        cb(s)
+        return
+      }
       const uci = line.split(/\s+/)[1]
       const cb = this.onBestMove
       this.onBestMove = null
@@ -129,9 +151,28 @@ export class Engine {
     }
   }
 
+  /**
+   * Evaluate a position to a fixed depth, returning the score from the
+   * perspective of the side to move. Calls serialize on this worker, so it's
+   * safe to fire several in a row (used by the analysis engine for hints and
+   * blunder detection — keep it OFF the playing engine).
+   */
+  evaluate(fen: string, depth = 12): Promise<Score | null> {
+    const task = () =>
+      new Promise<Score | null>((resolve) => {
+        this.onEval = resolve
+        this.lastScore = null
+        this.send(`position fen ${fen}`)
+        this.send(`go depth ${depth}`)
+      })
+    this.evalQueue = this.evalQueue.then(task, task)
+    return this.evalQueue
+  }
+
   /** Stop the current search (e.g. when the position changes mid-think). */
   stop() {
     this.onBestMove = null
+    this.onEval = null
     this.send('stop')
   }
 

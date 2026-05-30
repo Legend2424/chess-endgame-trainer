@@ -63,6 +63,16 @@ body {
 }
 .status.thinking { color: #d9c25a; }
 .status.over { color: #8cb35a; font-size: 1.05rem; }
+.notice {
+  margin-top: 8px;
+  background: #4a3f2a;
+  border: 1px solid #6b5a36;
+  color: #f0d98a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
 .goal {
   margin-top: 8px;
   color: var(--muted);
@@ -82,6 +92,20 @@ body {
 
 .ctrl-section { display: flex; flex-direction: column; gap: 6px; }
 .ctrl-section.row { flex-direction: row; }
+.row { display: flex; align-items: center; }
+.row.gap { gap: 10px; }
+.grow { flex: 1 1 auto; }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  user-select: none;
+}
+.toggle input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.pill.alt { background: #c98b3a; }
 .ctrl-label { font-size: 0.9rem; color: var(--text); }
 .ctrl-desc { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); line-height: 1.35; }
 .ctrl-hint { margin: 2px 0 0; font-size: 0.78rem; color: var(--muted); }

@@ -11,7 +11,11 @@ interface ControlsProps {
   onRatingChange: (r: number) => void
   moveTimeSec: number
   onMoveTimeChange: (s: number) => void
+  defendMode: boolean
+  onDefendChange: (d: boolean) => void
   onRandomize: () => void
+  onUndo: () => void
+  canUndo: boolean
   onFlip: () => void
   disabled: boolean
 }
@@ -29,9 +33,15 @@ export default function Controls(p: ControlsProps) {
 
   return (
     <aside className="controls">
-      <button className="btn btn-primary big" onClick={p.onRandomize} disabled={p.disabled}>
-        🎲 Randomize again
-      </button>
+      <div className="row gap">
+        <button className="btn btn-primary big grow" onClick={p.onRandomize} disabled={p.disabled}>
+          🎲 Randomize again
+        </button>
+      </div>
+      <div className="row gap">
+        <button className="btn grow" onClick={p.onUndo} disabled={!p.canUndo}>↶ Take back</button>
+        <button className="btn grow" onClick={p.onFlip} disabled={p.disabled}>⟲ Flip</button>
+      </div>
 
       <section className="ctrl-section">
         <label className="ctrl-label">Endgame type</label>
@@ -46,6 +56,23 @@ export default function Controls(p: ControlsProps) {
           ))}
         </select>
         <p className="ctrl-desc">{p.theme.description}</p>
+      </section>
+
+      <section className="ctrl-section">
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={p.defendMode}
+            onChange={(e) => p.onDefendChange(e.target.checked)}
+            disabled={p.disabled}
+          />
+          <span>Defend the worse side <span className="pill alt">draw = win</span></span>
+        </label>
+        <p className="ctrl-hint">
+          {p.defendMode
+            ? 'You play the harder side — try to hold a draw or survive.'
+            : 'You play the stronger side and try to convert the win.'}
+        </p>
       </section>
 
       <section className="ctrl-section">
@@ -98,10 +125,6 @@ export default function Controls(p: ControlsProps) {
           onChange={(e) => p.onMoveTimeChange(Number(e.target.value))}
         />
         <div className="range-ends"><span>1s</span><span>5s</span></div>
-      </section>
-
-      <section className="ctrl-section row">
-        <button className="btn" onClick={p.onFlip} disabled={p.disabled}>⟲ Flip board</button>
       </section>
     </aside>
   )
