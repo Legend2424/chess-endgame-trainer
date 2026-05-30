@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import Board from './components/Board'
 import Controls from './components/Controls'
@@ -6,7 +6,7 @@ import Clock from './components/Clock'
 import EvalBar from './components/EvalBar'
 import BoardEditor from './components/BoardEditor'
 import { Engine, type Score } from './engine/stockfish'
-import { THEMES, themeById } from './chess/endgames'
+import { loadPuzzleDb, randomPuzzle, getCategories, type PuzzleCategory } from './chess/puzzleDb'
 
 type Status =
   | { kind: 'loading' }
@@ -45,8 +45,10 @@ export default function App() {
   const playerColorRef = useRef<Color>('w') // mirror of state for async callbacks
 
   const [engineReady, setEngineReady] = useState(false)
-  const [themeId, setThemeId] = useState(THEMES[0].id)
-  const [handicap, setHandicap] = useState(2)
+  const [categories, setCategories] = useState<PuzzleCategory[]>([])
+  const [categoryBit, setCategoryBit] = useState(0)
+  const categoryBitRef = useRef(0)
+  categoryBitRef.current = categoryBit
   const [rating, setRating] = useState(1200)
   const [moveTimeSec, setMoveTimeSec] = useState(3)
   const [defendMode, setDefendMode] = useState(false)
@@ -77,7 +79,6 @@ export default function App() {
   const statusRef = useRef<Status>(status)
   statusRef.current = status
 
-  const theme = useMemo(() => themeById(themeId), [themeId])
   const clockOn = baseMin > 0
 
   // --- Engine boot -----------------------------------------------------------
@@ -91,17 +92,20 @@ export default function App() {
     analysis.init().then(() => {
       if (!cancelled) analysis.setStrength({ rating: 3000, moveTimeMs: 1000 })
     })
-    engine
-      .init()
-      .then(() => {
+    Promise.all([engine.init(), loadPuzzleDb()])
+      .then(([, cats]) => {
         if (cancelled) return
         setEngineReady(true)
-        newPosition(themeId, handicap, defendMode)
+        setCategories(cats)
+        const firstBit = cats[0]?.bit ?? 0
+        setCategoryBit(firstBit)
+        categoryBitRef.current = firstBit
+        newPuzzle(firstBit, false)
       })
       .catch((e) => {
         if (cancelled) return
-        console.error('Engine failed to load', e)
-        setStatus({ kind: 'over', text: 'Engine failed to load. Check console.' })
+        console.error('Failed to load engine or puzzle DB', e)
+        setStatus({ kind: 'over', text: 'Failed to load. Check console.' })
       })
     return () => {
       cancelled = true
@@ -326,13 +330,21 @@ export default function App() {
     [syncBoard, askEngine, beginPlayerTurn, resetClocks, clockOn],
   )
 
-  const newPosition = useCallback(
-    (id: string, hcap: number, defend: boolean) => {
-      const pos = themeById(id).generate({ handicap: hcap })
-      const strongColor = pos.playerColor as Color
-      const playerCol: Color = defend ? opposite(strongColor) : strongColor
-      const goal = defend ? 'Defend — hold the draw / survive as long as you can.' : pos.goal
-      beginFromFen(pos.fen, playerCol, goal, 'Generated a finished position — try Randomize again.')
+  // Load a random puzzle from the chosen Lichess category. The puzzle's
+  // side-to-move is the side the human plays (defend mode flips to the other).
+  const newPuzzle = useCallback(
+    (bit: number, defend: boolean) => {
+      const p = randomPuzzle(bit)
+      if (!p) {
+        setStatus({ kind: 'over', text: 'No puzzles in this category — pick another.' })
+        return
+      }
+      const playerCol: Color = defend ? opposite(p.sideToMove) : p.sideToMove
+      const catName = getCategories().find((c) => c.bit === bit)?.name ?? 'Endgame'
+      const goal = defend
+        ? `${catName} — defend and try to hold.`
+        : `${catName} (from a real game) — play it out.`
+      beginFromFen(p.fen, playerCol, goal, 'That position was already finished — try Randomize again.')
     },
     [beginFromFen],
   )
@@ -355,8 +367,8 @@ export default function App() {
     setMode('editor')
   }, [])
   const cancelEditor = useCallback(() => {
-    newPosition(themeId, handicap, defendMode)
-  }, [newPosition, themeId, handicap, defendMode])
+    newPuzzle(categoryBitRef.current, defendMode)
+  }, [newPuzzle, defendMode])
 
   // --- Takeback --------------------------------------------------------------
   const undo = useCallback(() => {
@@ -386,18 +398,15 @@ export default function App() {
   }, [syncBoard, reportOrContinue, askEngine, beginPlayerTurn, clockOn])
 
   // --- Controls handlers -----------------------------------------------------
-  const onRandomize = () => newPosition(themeId, handicap, defendMode)
-  const onThemeChange = (id: string) => {
-    setThemeId(id)
-    newPosition(id, handicap, defendMode)
-  }
-  const onHandicapChange = (h: number) => {
-    setHandicap(h)
-    if (themeById(themeId).materialBalance === null) newPosition(themeId, h, defendMode)
+  const onRandomize = () => newPuzzle(categoryBit, defendMode)
+  const onCategoryChange = (bit: number) => {
+    setCategoryBit(bit)
+    categoryBitRef.current = bit
+    newPuzzle(bit, defendMode)
   }
   const onDefendChange = (d: boolean) => {
     setDefendMode(d)
-    newPosition(themeId, handicap, d)
+    newPuzzle(categoryBit, d)
   }
   const onBaseMinChange = (m: number) => setBaseMin(m)
   const onIncSecChange = (s: number) => setIncSec(s)
@@ -407,10 +416,10 @@ export default function App() {
     setPlayerColor(c)
   }
 
-  // Apply a freshly chosen time control by restarting the position (play mode only).
+  // Apply a freshly chosen time control by restarting with a fresh puzzle (play mode only).
   useEffect(() => {
     if (!engineReady || modeRef.current !== 'play') return
-    newPosition(themeId, handicap, defendMode)
+    newPuzzle(categoryBitRef.current, defendMode)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseMin, incSec])
 
@@ -488,12 +497,9 @@ export default function App() {
         </div>
 
         <Controls
-          themes={THEMES}
-          themeId={themeId}
-          onThemeChange={onThemeChange}
-          theme={theme}
-          handicap={handicap}
-          onHandicapChange={onHandicapChange}
+          categories={categories}
+          categoryBit={categoryBit}
+          onCategoryChange={onCategoryChange}
           rating={rating}
           onRatingChange={setRating}
           moveTimeSec={moveTimeSec}

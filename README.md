@@ -48,15 +48,25 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
   position, Clear board. Illegal setups (no king, kings touching, pawn on the back rank, side
   not-to-move already in check, already-finished) are blocked with a clear message.
 
+## Rebuilding the puzzle bundle
+
+`public/puzzles/endgames.json` (~23 MB) is generated from the
+[Lichess open puzzle database](https://database.lichess.org/) (CC0). To refresh it:
+
+1. Download `lichess_db_puzzle.csv.zst` from the link above.
+2. Point `SRC` in `scripts/process-puzzles.mjs` at it (default `C:\Claude\_work\puzzles.csv.zst`).
+3. `node --max-old-space-size=4096 scripts/process-puzzles.mjs`
+
+It streams the ~5M-row CSV, keeps the ~905k `endgame`-themed puzzles, samples 220k evenly, and writes
+the FEN + setup move + rating + a category bitmask. The browser applies the setup move so the human is
+to move. Raise `TARGET` for an even bigger bundle.
+
 ## Deferred (architected for, not yet built)
 
 - FEN paste/export in the board editor.
 - Hint button (best-move arrow); tablebase-perfect opponent.
-- **Real-game endgame library** — optionally seed positions from the
-  [Lichess open puzzle database](https://database.lichess.org/) (CC0): millions of FENs tagged with
-  an `endgame` theme + difficulty rating, derived from real games. Would let the trainer serve
-  authentic, reachable endgames filtered by the rating slider. (Plan: bundle a filtered/trimmed
-  subset as a static JSON shipped with the app, since the full CSV is large.)
+- Filter the served puzzles by the opponent-strength slider (the data carries each puzzle's Lichess
+  rating; `randomPuzzle` already accepts an optional rating band).
 
 ## Engine strength model (Skill Level + depth)
 

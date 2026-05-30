@@ -1,12 +1,9 @@
-import type { EndgameTheme } from '../chess/types'
+import type { PuzzleCategory } from '../chess/puzzleDb'
 
 interface ControlsProps {
-  themes: EndgameTheme[]
-  themeId: string
-  theme: EndgameTheme
-  onThemeChange: (id: string) => void
-  handicap: number
-  onHandicapChange: (h: number) => void
+  categories: PuzzleCategory[]
+  categoryBit: number
+  onCategoryChange: (bit: number) => void
   rating: number
   onRatingChange: (r: number) => void
   moveTimeSec: number
@@ -36,6 +33,11 @@ function ratingLabel(r: number): string {
   return 'Expert'
 }
 
+function fmtCount(n: number): string {
+  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  return String(n)
+}
+
 const BASE_OPTIONS = [
   { v: 0, label: 'Off' },
   { v: 1, label: '1 min' },
@@ -48,8 +50,6 @@ const BASE_OPTIONS = [
 const INC_OPTIONS = [0, 2, 3, 5, 10]
 
 export default function Controls(p: ControlsProps) {
-  const usesSlider = p.theme.materialBalance === null
-
   return (
     <aside className="controls">
       <div className="row gap">
@@ -72,49 +72,19 @@ export default function Controls(p: ControlsProps) {
       </div>
 
       <section className="ctrl-section">
-        <label className="ctrl-label">Endgame type</label>
-        <select value={p.themeId} onChange={(e) => p.onThemeChange(e.target.value)} disabled={p.disabled}>
-          {p.themes.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-              {t.materialBalance !== null
-                ? `  (${t.materialBalance >= 0 ? '+' : ''}${t.materialBalance})`
-                : ''}
+        <label className="ctrl-label">Endgame category (from real games)</label>
+        <select
+          value={p.categoryBit}
+          onChange={(e) => p.onCategoryChange(Number(e.target.value))}
+          disabled={p.disabled || p.categories.length === 0}
+        >
+          {p.categories.map((c) => (
+            <option key={c.bit} value={c.bit}>
+              {c.name} ({fmtCount(c.count)})
             </option>
           ))}
         </select>
-        <p className="ctrl-desc">{p.theme.description}</p>
-      </section>
-
-      <section className="ctrl-section">
-        <label className="ctrl-label">Clock</label>
-        <div className="row gap">
-          <select
-            className="grow"
-            value={p.baseMin}
-            onChange={(e) => p.onBaseMinChange(Number(e.target.value))}
-            disabled={p.disabled}
-          >
-            {BASE_OPTIONS.map((o) => (
-              <option key={o.v} value={o.v}>{o.label}</option>
-            ))}
-          </select>
-          <select
-            className="grow"
-            value={p.incSec}
-            onChange={(e) => p.onIncSecChange(Number(e.target.value))}
-            disabled={p.disabled || p.baseMin === 0}
-          >
-            {INC_OPTIONS.map((s) => (
-              <option key={s} value={s}>+{s}s / move</option>
-            ))}
-          </select>
-        </div>
-        <p className="ctrl-hint">
-          {p.baseMin === 0
-            ? 'No clock — play untimed.'
-            : `${p.baseMin} min + ${p.incSec}s increment. Changing this restarts the position.`}
-        </p>
+        <p className="ctrl-hint">Positions taken from real Lichess games (CC0 puzzle database).</p>
       </section>
 
       <section className="ctrl-section">
@@ -130,7 +100,7 @@ export default function Controls(p: ControlsProps) {
         <p className="ctrl-hint">
           {p.defendMode
             ? 'You play the harder side — try to hold a draw or survive.'
-            : 'You play the stronger side and try to convert the win.'}
+            : 'You play the side with the advantage and try to convert.'}
         </p>
       </section>
 
@@ -164,23 +134,31 @@ export default function Controls(p: ControlsProps) {
       </section>
 
       <section className="ctrl-section">
-        <label className="ctrl-label">
-          Material handicap: <strong>{p.handicap >= 0 ? `+${p.handicap}` : p.handicap}</strong>
-        </label>
-        <input
-          type="range"
-          min={-2}
-          max={5}
-          step={1}
-          value={p.handicap}
-          onChange={(e) => p.onHandicapChange(Number(e.target.value))}
-          disabled={!usesSlider}
-        />
-        <div className="range-ends"><span>-2</span><span>+5</span></div>
+        <label className="ctrl-label">Clock</label>
+        <div className="row gap">
+          <select
+            className="grow"
+            value={p.baseMin}
+            onChange={(e) => p.onBaseMinChange(Number(e.target.value))}
+            disabled={p.disabled}
+          >
+            {BASE_OPTIONS.map((o) => (
+              <option key={o.v} value={o.v}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            className="grow"
+            value={p.incSec}
+            onChange={(e) => p.onIncSecChange(Number(e.target.value))}
+            disabled={p.disabled || p.baseMin === 0}
+          >
+            {INC_OPTIONS.map((s) => (
+              <option key={s} value={s}>+{s}s / move</option>
+            ))}
+          </select>
+        </div>
         <p className="ctrl-hint">
-          {usesSlider
-            ? 'Points of material you start ahead (+) or behind (−).'
-            : 'This endgame has a fixed balance. Pick “🎲 Random (by material)” to use this slider.'}
+          {p.baseMin === 0 ? 'No clock — play untimed.' : `${p.baseMin} min + ${p.incSec}s. Changing this loads a fresh puzzle.`}
         </p>
       </section>
 
