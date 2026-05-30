@@ -63,6 +63,8 @@ export default function App() {
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [notice, setNotice] = useState<string | null>(null)
   const [ply, setPly] = useState(0)
+  const [hintArrow, setHintArrow] = useState<[string, string] | null>(null)
+  const [hintLoading, setHintLoading] = useState(false)
   const [mode, setMode] = useState<'play' | 'editor'>('play')
   const modeRef = useRef(mode)
   modeRef.current = mode
@@ -401,6 +403,27 @@ export default function App() {
     }
   }, [syncBoard, reportOrContinue, askEngine, beginPlayerTurn, clockOn])
 
+  // --- Show best move (hint) -------------------------------------------------
+  // Uses the full-strength analysis engine to find the best move for the side to
+  // move, then draws it as an arrow. Available only on the player's turn.
+  const onHint = useCallback(() => {
+    const game = gameRef.current
+    const analysis = analysisRef.current
+    if (!analysis || statusRef.current.kind !== 'play') return
+    setHintLoading(true)
+    const myGen = genIdRef.current
+    analysis.bestMoveAtDepth(game.fen(), 18).then((uci) => {
+      if (myGen !== genIdRef.current) return // position changed; ignore stale hint
+      setHintLoading(false)
+      if (uci) setHintArrow([uci.slice(0, 2), uci.slice(2, 4)])
+    })
+  }, [])
+
+  // Clear any hint arrow whenever the position changes.
+  useEffect(() => {
+    setHintArrow(null)
+  }, [fen])
+
   // --- Controls handlers -----------------------------------------------------
   const onRandomize = () => newPuzzle(categoryBit, defendMode)
   const onCategoryChange = (bit: number) => {
@@ -492,6 +515,7 @@ export default function App() {
                   interactive={interactive}
                   onMove={onMove}
                   lastMove={lastMove}
+                  hintArrow={hintArrow}
                 />
               </div>
               <StatusBar
@@ -527,6 +551,9 @@ export default function App() {
           onRandomize={onRandomize}
           onUndo={undo}
           canUndo={canUndo}
+          onHint={onHint}
+          canHint={interactive && !hintLoading}
+          hintLoading={hintLoading}
           onFlip={flip}
           onSetupBoard={openEditor}
           editorActive={mode === 'editor'}

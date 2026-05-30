@@ -22,6 +22,9 @@ interface ControlsProps {
   onRandomize: () => void
   onUndo: () => void
   canUndo: boolean
+  onHint: () => void
+  canHint: boolean
+  hintLoading: boolean
   onFlip: () => void
   onSetupBoard: () => void
   editorActive: boolean
@@ -63,6 +66,11 @@ export default function Controls(p: ControlsProps) {
       <div className="row gap">
         <button className="btn grow" onClick={p.onUndo} disabled={!p.canUndo}>↶ Take back</button>
         <button className="btn grow" onClick={p.onFlip} disabled={p.disabled || p.editorActive}>⟲ Flip</button>
+      </div>
+      <div className="row gap">
+        <button className="btn grow" onClick={p.onHint} disabled={!p.canHint || p.editorActive}>
+          {p.hintLoading ? '💡 Thinking…' : '💡 Show best move'}
+        </button>
       </div>
       <div className="row gap">
         <button

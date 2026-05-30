@@ -10,6 +10,8 @@ interface BoardProps {
   onMove: (from: string, to: string, promotion?: string) => boolean
   /** Squares to highlight as the last move, e.g. ['e2','e4']. */
   lastMove?: [string, string] | null
+  /** Optional best-move hint arrow [from, to]. */
+  hintArrow?: [string, string] | null
 }
 
 const DARK = '#769656'
@@ -17,7 +19,7 @@ const LIGHT = '#eeeed2'
 const SELECT = 'rgba(255, 255, 51, 0.5)'
 const LASTMOVE = 'rgba(255, 255, 51, 0.35)'
 
-export default function Board({ fen, orientation, interactive, onMove, lastMove }: BoardProps) {
+export default function Board({ fen, orientation, interactive, onMove, lastMove, hintArrow }: BoardProps) {
   const game = useMemo(() => new Chess(fen), [fen])
   const [selected, setSelected] = useState<string | null>(null)
   const [width, setWidth] = useState(480)
@@ -110,6 +112,7 @@ export default function Board({ fen, orientation, interactive, onMove, lastMove 
         customDarkSquareStyle={{ backgroundColor: DARK }}
         customLightSquareStyle={{ backgroundColor: LIGHT }}
         customSquareStyles={squareStyles}
+        customArrows={hintArrow ? [[hintArrow[0] as Square, hintArrow[1] as Square, '#3a8a3a']] : []}
         animationDuration={180}
       />
     </div>

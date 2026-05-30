@@ -49,6 +49,7 @@ export class Engine {
   private readyWaiters: Array<() => void> = []
   private onBestMove: BestMoveCallback | null = null
   private onEval: ((s: Score | null) => void) | null = null
+  private onBestQuery: ((uci: string | null) => void) | null = null
   private lastScore: Score | null = null
   private evalQueue: Promise<Score | null> = Promise.resolve(null)
   private strength: StrengthSettings = { rating: 1200, moveTimeMs: 3000 }
@@ -99,6 +100,13 @@ export class Engine {
     }
 
     if (line.startsWith('bestmove')) {
+      const uciMove = line.split(/\s+/)[1]
+      if (this.onBestQuery) {
+        const cb = this.onBestQuery
+        this.onBestQuery = null
+        cb(uciMove && uciMove !== '(none)' ? uciMove : null)
+        return
+      }
       if (this.onEval) {
         const cb = this.onEval
         const s = this.lastScore
@@ -106,10 +114,9 @@ export class Engine {
         cb(s)
         return
       }
-      const uci = line.split(/\s+/)[1]
       const cb = this.onBestMove
       this.onBestMove = null
-      if (cb && uci && uci !== '(none)') cb(uci)
+      if (cb && uciMove && uciMove !== '(none)') cb(uciMove)
     }
   }
 
@@ -169,10 +176,27 @@ export class Engine {
     return this.evalQueue
   }
 
+  /**
+   * Find the best move at a fixed (deep) depth, returning a UCI move string.
+   * Serializes on the eval queue like evaluate(), so use it on the full-strength
+   * analysis engine — never the playing engine. Used by the "Show best move" hint.
+   */
+  bestMoveAtDepth(fen: string, depth = 18): Promise<string | null> {
+    const task = () =>
+      new Promise<string | null>((resolve) => {
+        this.onBestQuery = resolve
+        this.send(`position fen ${fen}`)
+        this.send(`go depth ${depth}`)
+      })
+    this.evalQueue = this.evalQueue.then(task, task) as Promise<Score | null>
+    return this.evalQueue as unknown as Promise<string | null>
+  }
+
   /** Stop the current search (e.g. when the position changes mid-think). */
   stop() {
     this.onBestMove = null
     this.onEval = null
+    this.onBestQuery = null
     this.send('stop')
   }
 
