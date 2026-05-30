@@ -3,6 +3,7 @@ import { Chess } from 'chess.js'
 import Board from './components/Board'
 import Controls from './components/Controls'
 import Clock from './components/Clock'
+import BoardEditor from './components/BoardEditor'
 import { Engine, type Score } from './engine/stockfish'
 import { THEMES, themeById } from './chess/endgames'
 
@@ -56,6 +57,9 @@ export default function App() {
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [notice, setNotice] = useState<string | null>(null)
   const [ply, setPly] = useState(0)
+  const [mode, setMode] = useState<'play' | 'editor'>('play')
+  const modeRef = useRef(mode)
+  modeRef.current = mode
 
   // --- Clock state -----------------------------------------------------------
   const [baseMin, setBaseMin] = useState(10) // 0 = clock off
@@ -286,27 +290,27 @@ export default function App() {
   )
 
   // --- Position setup --------------------------------------------------------
-  const newPosition = useCallback(
-    (id: string, hcap: number, defend: boolean) => {
-      const pos = themeById(id).generate({ handicap: hcap })
-      const game = new Chess(pos.fen)
+  // Shared "start a game from this exact FEN" routine. Always returns to play
+  // view, so any start path (theme, randomize, custom editor) leaves the editor.
+  const beginFromFen = useCallback(
+    (startFen: string, playerCol: Color, goal: string, finishedText?: string) => {
+      const game = new Chess(startFen)
       gameRef.current = game
       genIdRef.current++
       prevScoreRef.current = null
       engineRef.current?.newGame()
 
-      const strongColor = pos.playerColor as Color
-      const playerCol: Color = defend ? opposite(strongColor) : strongColor
       playerColorRef.current = playerCol
       setPlayerColor(playerCol)
-      setGoalText(defend ? 'Defend — hold the draw / survive as long as you can.' : pos.goal)
+      setGoalText(goal)
       setNotice(null)
+      setMode('play')
       syncBoard(game)
       resetClocks()
 
       if (game.isGameOver()) {
         activeRef.current = null
-        setStatus({ kind: 'over', text: 'Generated a finished position — try Randomize again.' })
+        setStatus({ kind: 'over', text: finishedText ?? 'That position is already finished.' })
         return
       }
       activeRef.current = clockOn ? (game.turn() as Color) : null
@@ -316,6 +320,38 @@ export default function App() {
     },
     [syncBoard, askEngine, beginPlayerTurn, resetClocks, clockOn],
   )
+
+  const newPosition = useCallback(
+    (id: string, hcap: number, defend: boolean) => {
+      const pos = themeById(id).generate({ handicap: hcap })
+      const strongColor = pos.playerColor as Color
+      const playerCol: Color = defend ? opposite(strongColor) : strongColor
+      const goal = defend ? 'Defend — hold the draw / survive as long as you can.' : pos.goal
+      beginFromFen(pos.fen, playerCol, goal, 'Generated a finished position — try Randomize again.')
+    },
+    [beginFromFen],
+  )
+
+  // Start a game from a custom board the user built in the editor. They play
+  // whichever side moves first.
+  const startCustom = useCallback(
+    (customFen: string, sideToMove: Color) => {
+      setDefendMode(false)
+      beginFromFen(customFen, sideToMove, 'Custom position — play it out!')
+    },
+    [beginFromFen],
+  )
+
+  // Enter / leave the board editor.
+  const openEditor = useCallback(() => {
+    genIdRef.current++
+    engineRef.current?.stop()
+    activeRef.current = null
+    setMode('editor')
+  }, [])
+  const cancelEditor = useCallback(() => {
+    newPosition(themeId, handicap, defendMode)
+  }, [newPosition, themeId, handicap, defendMode])
 
   // --- Takeback --------------------------------------------------------------
   const undo = useCallback(() => {
@@ -366,9 +402,9 @@ export default function App() {
     setPlayerColor(c)
   }
 
-  // Apply a freshly chosen time control by restarting the position.
+  // Apply a freshly chosen time control by restarting the position (play mode only).
   useEffect(() => {
-    if (!engineReady) return
+    if (!engineReady || modeRef.current !== 'play') return
     newPosition(themeId, handicap, defendMode)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseMin, incSec])
@@ -390,26 +426,32 @@ export default function App() {
 
       <div className="layout">
         <div className="board-pane">
-          {clockOn && (
-            <Clock ms={oppMs} active={activeRef.current === oppColor} label="Opponent" />
+          {mode === 'editor' ? (
+            <BoardEditor onStart={startCustom} onCancel={cancelEditor} />
+          ) : (
+            <>
+              {clockOn && (
+                <Clock ms={oppMs} active={activeRef.current === oppColor} label="Opponent" />
+              )}
+              <Board
+                fen={fen}
+                orientation={orientation}
+                interactive={interactive}
+                onMove={onMove}
+                lastMove={lastMove}
+              />
+              {clockOn && (
+                <Clock ms={playerMs} active={activeRef.current === playerColor} label="You" />
+              )}
+              <StatusBar
+                status={status}
+                goal={goalText}
+                playerColor={playerColor}
+                engineReady={engineReady}
+                notice={notice}
+              />
+            </>
           )}
-          <Board
-            fen={fen}
-            orientation={orientation}
-            interactive={interactive}
-            onMove={onMove}
-            lastMove={lastMove}
-          />
-          {clockOn && (
-            <Clock ms={playerMs} active={activeRef.current === playerColor} label="You" />
-          )}
-          <StatusBar
-            status={status}
-            goal={goalText}
-            playerColor={playerColor}
-            engineReady={engineReady}
-            notice={notice}
-          />
         </div>
 
         <Controls
@@ -433,6 +475,8 @@ export default function App() {
           onUndo={undo}
           canUndo={canUndo}
           onFlip={flip}
+          onSetupBoard={openEditor}
+          editorActive={mode === 'editor'}
           disabled={!engineReady}
         />
       </div>

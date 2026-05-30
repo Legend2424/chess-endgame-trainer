@@ -21,6 +21,8 @@ interface ControlsProps {
   onUndo: () => void
   canUndo: boolean
   onFlip: () => void
+  onSetupBoard: () => void
+  editorActive: boolean
   disabled: boolean
 }
 
@@ -55,7 +57,16 @@ export default function Controls(p: ControlsProps) {
       </div>
       <div className="row gap">
         <button className="btn grow" onClick={p.onUndo} disabled={!p.canUndo}>↶ Take back</button>
-        <button className="btn grow" onClick={p.onFlip} disabled={p.disabled}>⟲ Flip</button>
+        <button className="btn grow" onClick={p.onFlip} disabled={p.disabled || p.editorActive}>⟲ Flip</button>
+      </div>
+      <div className="row gap">
+        <button
+          className={'btn grow' + (p.editorActive ? ' btn-primary' : '')}
+          onClick={p.onSetupBoard}
+          disabled={p.disabled || p.editorActive}
+        >
+          ✏ Set up board
+        </button>
       </div>
 
       <section className="ctrl-section">

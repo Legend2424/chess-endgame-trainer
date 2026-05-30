@@ -37,9 +37,15 @@ Node.js is installed at `C:\Claude\tools\node` and on your PATH.
 - **Blunder feedback** — a second, full-strength Stockfish instance evaluates each of your moves
   and warns when you let a win slip or give up a draw, or flags a large inaccuracy.
 
+- **Set up board** — a drag-and-drop position editor: drag pieces from the white/black trays
+  onto the board, drag a piece off (or click it) to remove it, pick who moves first, and press
+  **Start game** to play your custom position against the engine. Presets: Kings only, Start
+  position, Clear board. Illegal setups (no king, kings touching, pawn on the back rank, side
+  not-to-move already in check, already-finished) are blocked with a clear message.
+
 ## Deferred (architected for, not yet built)
 
-- Board editor (drag pieces on/off an empty board) + FEN paste.
+- FEN paste/export in the board editor.
 - Hint button (best-move arrow) and a win/draw eval bar; tablebase-perfect opponent.
 
 ## Engine strength model (why not UCI_Elo)

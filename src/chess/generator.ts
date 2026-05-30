@@ -55,6 +55,89 @@ function toFen(board: Board, sideToMove: Color): string {
   return `${fen} ${sideToMove} - - 0 1`
 }
 
+// --- Board editor support ----------------------------------------------------
+
+/** A react-chessboard position object: square -> piece, e.g. { e4: 'wP' }. */
+export type PositionObject = Record<string, string>
+
+/** Convert a react-chessboard position object + side to move into a FEN. */
+export function positionToFen(position: PositionObject, sideToMove: Color): string {
+  const board: Board = new Map()
+  for (const [square, piece] of Object.entries(position)) {
+    if (!piece) continue
+    const color = piece[0] // 'w' | 'b'
+    const type = piece[1] // 'P','N','B','R','Q','K'
+    const ch = (color === 'w' ? type.toUpperCase() : type.toLowerCase()) as PieceChar
+    board.set(square, ch)
+  }
+  return toFen(board, sideToMove)
+}
+
+export interface SetupValidation {
+  ok: boolean
+  fen?: string
+  /** Human-readable reason it can't be played yet. */
+  error?: string
+}
+
+/**
+ * Validate a board-editor position before starting a game. Returns a specific,
+ * kid-friendly error message when the position can't legally be played.
+ */
+export function validateSetup(position: PositionObject, sideToMove: Color): SetupValidation {
+  const pieces = Object.values(position).filter(Boolean)
+  const whiteKings = pieces.filter((p) => p === 'wK').length
+  const blackKings = pieces.filter((p) => p === 'bK').length
+  if (whiteKings !== 1 || blackKings !== 1) {
+    return { ok: false, error: 'You need exactly one white king and one black king.' }
+  }
+  // Pawns may not sit on the first or last rank.
+  for (const [square, piece] of Object.entries(position)) {
+    if (!piece) continue
+    if (piece[1] === 'P') {
+      const r = rankOf(square)
+      if (r === 1 || r === 8) return { ok: false, error: 'Pawns can’t be on the first or last rank.' }
+    }
+  }
+
+  const fen = positionToFen(position, sideToMove)
+  let chess: Chess
+  try {
+    chess = new Chess(fen)
+  } catch {
+    return { ok: false, error: 'That position isn’t legal — check the pieces.' }
+  }
+  // Kings adjacent?
+  let wk = '', bk = ''
+  for (const row of chess.board()) {
+    for (const cell of row) {
+      if (cell?.type === 'k') {
+        if (cell.color === 'w') wk = cell.square
+        else bk = cell.square
+      }
+    }
+  }
+  if (kingsAdjacent(wk, bk)) return { ok: false, error: 'The two kings can’t be touching.' }
+
+  // The side NOT to move must not already be in check (that would be illegal).
+  const other = sideToMove === 'w' ? 'b' : 'w'
+  try {
+    if (new Chess(positionToFen(position, other)).inCheck()) {
+      return {
+        ok: false,
+        error: `The ${other === 'w' ? 'white' : 'black'} king is in check — it can’t be ${sideToMove === 'w' ? 'White' : 'Black'} to move.`,
+      }
+    }
+  } catch {
+    /* fall through to the game-over check below */
+  }
+
+  if (chess.isGameOver() || chess.moves().length === 0) {
+    return { ok: false, error: 'That position is already finished (checkmate or stalemate).' }
+  }
+  return { ok: true, fen }
+}
+
 /** Legal, not already finished, kings not touching, side-not-to-move not in check. */
 export function isPlayablePosition(fen: string): boolean {
   // chess.js throws on structurally invalid FENs.
