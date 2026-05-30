@@ -1,9 +1,12 @@
-import type { PuzzleCategory } from '../chess/puzzleDb'
+import type { PuzzleCategory, Difficulty } from '../chess/puzzleDb'
 
 interface ControlsProps {
   categories: PuzzleCategory[]
   categoryBit: number
   onCategoryChange: (bit: number) => void
+  difficulties: Difficulty[]
+  difficultyId: string
+  onDifficultyChange: (id: string) => void
   rating: number
   onRatingChange: (r: number) => void
   moveTimeSec: number
@@ -85,6 +88,20 @@ export default function Controls(p: ControlsProps) {
           ))}
         </select>
         <p className="ctrl-hint">Positions taken from real Lichess games (CC0 puzzle database).</p>
+      </section>
+
+      <section className="ctrl-section">
+        <label className="ctrl-label">Difficulty</label>
+        <select
+          value={p.difficultyId}
+          onChange={(e) => p.onDifficultyChange(e.target.value)}
+          disabled={p.disabled}
+        >
+          {p.difficulties.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+        <p className="ctrl-hint">Filters puzzles by their Lichess difficulty rating.</p>
       </section>
 
       <section className="ctrl-section">

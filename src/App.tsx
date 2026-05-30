@@ -6,7 +6,7 @@ import Clock from './components/Clock'
 import EvalBar from './components/EvalBar'
 import BoardEditor from './components/BoardEditor'
 import { Engine, type Score } from './engine/stockfish'
-import { loadPuzzleDb, randomPuzzle, getCategories, type PuzzleCategory } from './chess/puzzleDb'
+import { loadPuzzleDb, randomPuzzle, getCategories, DIFFICULTIES, type PuzzleCategory } from './chess/puzzleDb'
 
 type Status =
   | { kind: 'loading' }
@@ -49,6 +49,9 @@ export default function App() {
   const [categoryBit, setCategoryBit] = useState(0)
   const categoryBitRef = useRef(0)
   categoryBitRef.current = categoryBit
+  const [difficultyId, setDifficultyId] = useState('any')
+  const difficultyIdRef = useRef('any')
+  difficultyIdRef.current = difficultyId
   const [rating, setRating] = useState(1200)
   const [moveTimeSec, setMoveTimeSec] = useState(3)
   const [defendMode, setDefendMode] = useState(false)
@@ -333,8 +336,9 @@ export default function App() {
   // Load a random puzzle from the chosen Lichess category. The puzzle's
   // side-to-move is the side the human plays (defend mode flips to the other).
   const newPuzzle = useCallback(
-    (bit: number, defend: boolean) => {
-      const p = randomPuzzle(bit)
+    (bit: number, defend: boolean, difficulty: string = difficultyIdRef.current) => {
+      const band = DIFFICULTIES.find((d) => d.id === difficulty)?.band ?? undefined
+      const p = randomPuzzle(bit, band)
       if (!p) {
         setStatus({ kind: 'over', text: 'No puzzles in this category — pick another.' })
         return
@@ -407,6 +411,11 @@ export default function App() {
   const onDefendChange = (d: boolean) => {
     setDefendMode(d)
     newPuzzle(categoryBit, d)
+  }
+  const onDifficultyChange = (id: string) => {
+    setDifficultyId(id)
+    difficultyIdRef.current = id
+    newPuzzle(categoryBit, defendMode, id)
   }
   const onBaseMinChange = (m: number) => setBaseMin(m)
   const onIncSecChange = (s: number) => setIncSec(s)
@@ -500,6 +509,9 @@ export default function App() {
           categories={categories}
           categoryBit={categoryBit}
           onCategoryChange={onCategoryChange}
+          difficulties={DIFFICULTIES}
+          difficultyId={difficultyId}
+          onDifficultyChange={onDifficultyChange}
           rating={rating}
           onRatingChange={setRating}
           moveTimeSec={moveTimeSec}

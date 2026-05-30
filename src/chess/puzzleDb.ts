@@ -30,6 +30,25 @@ export interface Puzzle {
   sideToMove: 'w' | 'b'
 }
 
+export interface Difficulty {
+  id: string
+  name: string
+  /** Lichess-rating band [min, max). null = any. */
+  band: [number, number] | null
+}
+
+// Difficulty bands by Lichess puzzle rating. Bundle ratings span 399–3176; every
+// band holds tens of thousands of puzzles, and randomPuzzle falls back to the
+// whole category if a band is sparse for a given category, so it never starves.
+export const DIFFICULTIES: Difficulty[] = [
+  { id: 'any', name: 'Any difficulty', band: null },
+  { id: 'very-easy', name: 'Very easy (under 1200)', band: [0, 1200] },
+  { id: 'easy', name: 'Easy (1200–1500)', band: [1200, 1500] },
+  { id: 'medium', name: 'Medium (1500–1800)', band: [1500, 1800] },
+  { id: 'hard', name: 'Hard (1800–2100)', band: [1800, 2100] },
+  { id: 'very-hard', name: 'Very hard (2100+)', band: [2100, 9999] },
+]
+
 let db: RawDb | null = null
 const byCategory = new Map<number, number[]>()
 
