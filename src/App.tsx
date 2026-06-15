@@ -52,7 +52,7 @@ export default function App() {
   const [difficultyId, setDifficultyId] = useState('any')
   const difficultyIdRef = useRef('any')
   difficultyIdRef.current = difficultyId
-  const [rating, setRating] = useState(1200)
+  const [rating, setRating] = useState(2000)
   const [moveTimeSec, setMoveTimeSec] = useState(3)
   const [defendMode, setDefendMode] = useState(false)
 

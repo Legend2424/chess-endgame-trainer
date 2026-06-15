@@ -36,7 +36,9 @@ function ratingLabel(r: number): string {
   if (r < 1300) return 'Casual'
   if (r < 1600) return 'Club'
   if (r < 1900) return 'Strong'
-  return 'Expert'
+  if (r < 2100) return 'Expert'
+  if (r < 2350) return 'Master'
+  return 'Maximum'
 }
 
 function fmtCount(n: number): string {
@@ -149,12 +151,12 @@ export default function Controls(p: ControlsProps) {
         <input
           type="range"
           min={800}
-          max={2000}
+          max={2500}
           step={50}
           value={p.rating}
           onChange={(e) => p.onRatingChange(Number(e.target.value))}
         />
-        <div className="range-ends"><span>800</span><span>2000</span></div>
+        <div className="range-ends"><span>800</span><span>2500</span></div>
         <p className="ctrl-hint">Adjustable any time — even mid-game.</p>
       </section>
 

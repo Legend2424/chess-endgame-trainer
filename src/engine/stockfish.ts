@@ -34,13 +34,20 @@ const ENGINE_URL = `${import.meta.env.BASE_URL}engine/stockfish-nnue-16-single.j
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
-/** Skill Level (0–20) and search depth for a target rating on the 800–2000 slider. */
+/** Skill Level (0–20) and search depth for a target rating on the 800–2500 slider. */
 export function ratingToSkillDepth(rating: number): { skill: number; depth: number } {
-  const t = clamp((rating - 800) / (2000 - 800), 0, 1)
-  // 800 -> Skill 1 / depth 5 ; 2000 -> Skill 20 / depth 16 (full strength, best moves).
-  const skill = Math.round(lerp(1, 20, t))
-  const depth = Math.round(lerp(5, 16, t))
-  return { skill: clamp(skill, 0, 20), depth: clamp(depth, 1, 30) }
+  if (rating <= 2000) {
+    // 800 -> Skill 1 / depth 5 ; 2000 -> Skill 20 / depth 16 (full strength).
+    const t = clamp((rating - 800) / (2000 - 800), 0, 1)
+    return {
+      skill: clamp(Math.round(lerp(1, 20, t)), 0, 20),
+      depth: clamp(Math.round(lerp(5, 16, t)), 1, 30),
+    }
+  }
+  // Above 2000: already full Skill 20, so push strength by searching deeper.
+  // 2000 -> depth 16 ; 2500 -> depth 24 (near-master tactical accuracy).
+  const t = clamp((rating - 2000) / (2500 - 2000), 0, 1)
+  return { skill: 20, depth: clamp(Math.round(lerp(16, 24, t)), 1, 40) }
 }
 
 export class Engine {
